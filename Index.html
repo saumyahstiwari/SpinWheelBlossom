@@ -1,0 +1,225 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Welcome to Spin the Wheel</title>
+    <meta charset="UTF-8" />
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Lato:wght@400;700&display=swap");
+    </style>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        height: 100vh;
+        display: grid;
+        place-items: center;
+        margin: 0;
+        height: 100vh;
+        background: linear-gradient(to bottom, #aaaaaa, #eeeeee);
+      }
+
+      #spin_the_wheel {
+        display: inline-block;
+        position: relative;
+        overflow: hidden;
+      }
+
+      #wheel {
+        display: block;
+        width: 600px; /* Smaller canvas size */
+        height: 600px; /* Smaller canvas size */
+      }
+
+      #spin {
+        font:
+          1.2em/0 "Lato",
+          sans-serif; /* Smaller font size */
+        user-select: none;
+        cursor: pointer;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 25%; /* Smaller spin button */
+        height: 25%; /* Smaller spin button */
+        margin: -12.5%; /* Adjusted margin for smaller button */
+        background: #fff;
+        color: #fff;
+        box-shadow:
+          0 0 0 6px currentColor, /* Smaller shadow */
+          0 0px 10px 3px rgba(0, 0, 0, 0.6); /* Smaller shadow */
+        border-radius: 50%;
+        transition: 0.8s;
+      }
+
+      #spin::after {
+        content: "";
+        position: absolute;
+        top: -12px; /* Adjusted arrow position */
+        border: 8px solid transparent; /* Smaller arrow */
+        border-bottom-color: currentColor;
+        border-top: none;
+      }
+
+      #spin:disabled {
+        cursor: not-allowed;
+        opacity: 0.6;
+      }
+
+      #result {
+        margin-top: 20px;
+        font-size: 1.5rem;
+        font-weight: bold;
+        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="spin_the_wheel">
+      <canvas id="wheel" width="600" height="600"></canvas>
+      <button id="spin">SPIN</button>
+    </div>
+    <div id="result"></div>
+    <script>
+      const sectors = [
+        { color: "#FFBC03", text: "#333333", label: "BOWLED", reward: "No Reward" },
+        { color: "#FF5A10", text: "#333333", label: "LBW", reward: "No Reward" },
+        { color: "#FFBC03", text: "#333333", label: "NO BALL", reward: "5% off on the bill" },
+        { color: "#FF5A10", text: "#333333", label: "WIDE", reward: "10% off on the total bill" },
+        { color: "#FFBC03", text: "#333333", label: "FOUR 4", reward: "Free Drinks" },
+        { color: "#FF5A10", text: "#333333", label: "SIX 6", reward: "Free Desserts" },
+        { color: "#FFBC03", text: "#333333", label: "CATCH OUT", reward: "No Reward" },
+        { color: "#FF5A10", text: "#333333", label: "RUN OUT", reward: "No Reward" },
+      ];
+
+      const events = {
+        listeners: {},
+        addListener: function (eventName, fn) {
+          this.listeners[eventName] = this.listeners[eventName] || [];
+          this.listeners[eventName].push(fn);
+        },
+        fire: function (eventName, ...args) {
+          if (this.listeners[eventName]) {
+            for (let fn of this.listeners[eventName]) {
+              fn(...args);
+            }
+          }
+        },
+      };
+
+      const rand = (m, M) => Math.random() * (M - m) + m;
+      const tot = sectors.length;
+      const spinEl = document.querySelector("#spin");
+      const resultDiv = document.querySelector("#result");
+      const ctx = document.querySelector("#wheel").getContext("2d");
+      const dia = ctx.canvas.width;
+      const rad = dia / 2;
+      const PI = Math.PI;
+      const TAU = 2 * PI;
+      const arc = TAU / sectors.length;
+
+      const friction = 0.991; // 0.995=soft, 0.99=mid, 0.98=hard
+      let angVel = 0; // Angular velocity
+      let ang = 0; // Angle in radians
+
+      let spinButtonClicked = false;
+
+      // Check if the wheel has already been spun
+      const hasSpun = localStorage.getItem("hasSpun");
+
+      if (hasSpun) {
+        spinEl.disabled = true;
+        spinEl.textContent = "USED";
+      }
+
+      const getIndex = () => Math.floor(tot - (ang / TAU) * tot) % tot;
+
+      function drawSector(sector, i) {
+        const ang = arc * i;
+        ctx.save();
+
+        // COLOR
+        ctx.beginPath();
+        ctx.fillStyle = sector.color;
+        ctx.moveTo(rad, rad);
+        ctx.arc(rad, rad, rad, ang, ang + arc);
+        ctx.lineTo(rad, rad);
+        ctx.fill();
+
+        // TEXT
+        ctx.translate(rad, rad);
+        ctx.rotate(ang + arc / 2);
+        ctx.textAlign = "right";
+        ctx.fillStyle = sector.text;
+        ctx.font = "bold 20px 'Lato', sans-serif"; /* Smaller font size */
+        ctx.fillText(sector.label, rad - 10, 10);
+        //
+
+        ctx.restore();
+      }
+
+      function rotate() {
+        const sector = sectors[getIndex()];
+        ctx.canvas.style.transform = `rotate(${ang - PI / 2}rad)`;
+
+        spinEl.textContent = !angVel ? "SPIN" : sector.label;
+        spinEl.style.background = sector.color;
+        spinEl.style.color = sector.text;
+      }
+
+      function frame() {
+        // Fire an event after the wheel has stopped spinning
+        if (!angVel && spinButtonClicked) {
+          const finalSector = sectors[getIndex()];
+          events.fire("spinEnd", finalSector);
+          spinButtonClicked = false; // reset the flag
+          return;
+        }
+
+        angVel *= friction; // Decrement velocity by friction
+        if (angVel < 0.002) angVel = 0; // Bring to stop
+        ang += angVel; // Update angle
+        ang %= TAU; // Normalize angle
+        rotate();
+      }
+
+      function engine() {
+        frame();
+        requestAnimationFrame(engine);
+      }
+
+      function init() {
+        sectors.forEach(drawSector);
+        rotate(); // Initial rotation
+        engine(); // Start engine
+        spinEl.addEventListener("click", () => {
+          if (!angVel && !hasSpun) {
+            angVel = rand(0.25, 0.45);
+            spinButtonClicked = true;
+
+            // Disable the spin button after spinning
+            spinEl.disabled = true;
+            spinEl.textContent = "USED";
+
+            // Save to localStorage to prevent future spins
+            localStorage.setItem("hasSpun", "true");
+          }
+        });
+      }
+
+      init();
+
+      events.addListener("spinEnd", (sector) => {
+        console.log(`Woop! You won ${sector.label}`);
+        resultDiv.textContent = `You won: ${sector.reward}`;
+      });
+    </script>
+  </body>
+</html>
